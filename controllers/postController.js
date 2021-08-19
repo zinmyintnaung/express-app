@@ -6,18 +6,70 @@ exports.viewCreateScreen = function(req, res){
 
 exports.create = function(req, res){
     let post = new Post(req.body, req.session.user._id)
-    post.create().then(function(){
-        res.send("New post created.")
+    post.create().then(function(newId){
+        
+        req.flash("success", "New Post successfully created")
+        req.session.save(()=>{
+            res.redirect(`/post/${newId}`)
+        })
     }).catch(function(errors){
-        res.send(errors)
+        errors.forEach(error => req.flash("errors", error))
+        req.session.save(()=>{
+            res.redirect("/create-post")
+        })
     })
 }
 
 exports.viewSingle = async function(req, res){
     try{
-        let post = await Post.findSingleById(req.params.id)
+        let post = await Post.findSingleById(req.params.id, req.visitorId)
         res.render('single-post-screen', {post: post})
     }catch{
-        res.send('404 template will go here')
+        res.render('404')
     }
+}
+
+exports.viewEditScreen = async function(req, res){
+    try{
+        let post = await Post.findSingleById(req.params.id)
+        if(post.authorId == req.visitorId){
+            res.render("edit-post", {post: post})
+        }else{
+            req.flash("errors", "You do not have permission for this action!")
+            req.session.save(()=>{
+                res.redirect("/")
+            })
+        }
+    }catch{
+        res.render("404")
+    }
+}
+
+exports.edit = async function(req, res){
+    let post = new Post(req.body, req.visitorId, req.params.id)
+    post.update().then((status)=>{
+        //post was successfully saved
+        //or user did have permission, but there are validation errors
+        if(status == "success"){
+            //post updated in the database
+            req.flash("success", "Post successfully updated")
+            req.session.save(function(){
+                res.redirect(`/post/${req.params.id}/edit`)
+            })
+        }else{
+            post.errors.forEach(function(error){
+                req.flash("errors", error)
+            })
+            req.session.save(function(){
+                res.redirect(`/post/${req.params.id}/edit`)
+            })
+        }
+    }).catch(()=>{
+        //a post with requested id doesn't exist 
+        //or current visitor is not the owner of post
+        req.flash("errors", "You do not have permission to update this post!")
+        req.session.save(function(){
+            res.redirect("/")
+        })
+    })
 }
